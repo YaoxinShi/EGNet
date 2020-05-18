@@ -46,4 +46,13 @@ We use the sal2edge.m to generate the edge label for training.
 Contrast Prior and Fluid Pyramid Integration for RGBD Salient Object Detection. (CVPR2019) [page](https://mmcheng.net/rgbdsalpyr/)
 
 
+========
 
+Python install:
+* N/A
+
+Pre-trained model:
+* Download [pretrained model](https://pan.baidu.com/s/1s35ZyGDSNVzVIeVd7Aot0Q) (2cf5)  ([google drive](https://drive.google.com/open?id=17Ffc6V5EiujtcFKupsJXhtlQ3cLK5OGp)), put epoch_resnet.pth and epoch_vgg.pth at the root folder of the project.
+
+Command line:
+* python run.py --mode test --sal_mode g

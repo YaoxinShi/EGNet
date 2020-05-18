@@ -35,7 +35,7 @@ if __name__ == '__main__':
     # Hyper-parameters
     parser.add_argument('--n_color', type=int, default=3)
 
-    parser.add_argument('--cuda', type=bool, default=True)
+    parser.add_argument('--cuda', type=bool, default=False)
 
     # Training settings
     parser.add_argument('--vgg', type=str, default=vgg_path)

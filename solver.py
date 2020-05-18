@@ -49,7 +49,7 @@ class Solver(object):
             self.log_output = open("%s/logs/log.txt" % config.save_fold, 'w')
         else:
             print('Loading pre-trained model from %s...' % self.config.model)
-            self.net_bone.load_state_dict(torch.load(self.config.model))
+            self.net_bone.load_state_dict(torch.load(self.config.model, map_location=torch.device('cpu')))
             self.net_bone.eval()
 
     def print_network(self, model, name):
@@ -119,7 +119,8 @@ class Solver(object):
                 print(images.size())
                 time_start = time.time()
                 up_edge, up_sal, up_sal_f = self.net_bone(images)
-                torch.cuda.synchronize()
+                if self.config.cuda:
+                    torch.cuda.synchronize()
                 time_end = time.time()
                 print(time_end - time_start)
                 time_t = time_t + time_end - time_start                              

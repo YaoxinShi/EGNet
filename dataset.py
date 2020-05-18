@@ -83,6 +83,10 @@ class ImageDataTest(data.Dataset):
                 self.image_root = '/home/liuj/dataset/DUTS/DUTS-TE/DUTS-TE-Image/'
                 self.image_source = '/home/liuj/dataset/DUTS/DUTS-TE/test.lst'
                 self.test_fold = '/media/ubuntu/disk/Result/saliency/DUTS/'
+            elif sal_mode == 'g':
+                self.image_root = './data/game/'
+                self.image_source = './data/game/test.lst'
+                self.test_fold = './data/game/'
         elif test_mode == 2:
 
             self.image_root = '/home/liuj/dataset/SK-LARGE/images/test/'
