@@ -129,8 +129,49 @@ test = Solver(None, test_loader, config, dataset.save_folder())
 #####################################################
 
 print(">>> load pretrained weights")
+'''
 torch_model = test.net_bone
 torch_model.load_state_dict(torch.load("epoch_resnet.pth", map_location=torch.device('cpu')))
+'''
+#------------------------------------------
+import io
+import numpy as np
+from torch import nn
+import torch.utils.model_zoo as model_zoo
+import torch.onnx
+import torch.nn as nn
+import torch.nn.init as init
+
+class SuperResolutionNet(nn.Module):
+    def __init__(self, upscale_factor, inplace=False):
+        super(SuperResolutionNet, self).__init__()
+
+        self.relu = nn.ReLU(inplace=inplace)
+        self.conv1 = nn.Conv2d(1, 64, (5, 5), (1, 1), (2, 2))
+        self.conv2 = nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1))
+        self.conv3 = nn.Conv2d(64, 32, (3, 3), (1, 1), (1, 1))
+        self.conv4 = nn.Conv2d(32, upscale_factor ** 2, (3, 3), (1, 1), (1, 1))
+        self.pixel_shuffle = nn.PixelShuffle(upscale_factor)
+
+        self._initialize_weights()
+
+    def forward(self, x):
+        x = self.relu(self.conv1(x))
+        x = self.relu(self.conv2(x))
+        x = self.relu(self.conv3(x))
+        x = self.pixel_shuffle(self.conv4(x))
+        return x
+
+    def _initialize_weights(self):
+        init.orthogonal_(self.conv1.weight, init.calculate_gain('relu'))
+        init.orthogonal_(self.conv2.weight, init.calculate_gain('relu'))
+        init.orthogonal_(self.conv3.weight, init.calculate_gain('relu'))
+        init.orthogonal_(self.conv4.weight)
+
+torch_model = SuperResolutionNet(upscale_factor=3)
+torch_model.load_state_dict(torch.load("superres_epoch100-44c6958e.pth", map_location=torch.device('cpu')))
+#------------------------------------------
+
 torch_model.eval() # set the model to inference mode
 
 #####################################################
@@ -138,16 +179,26 @@ torch_model.eval() # set the model to inference mode
 #####################################################
 
 print(">>> convert pytorch to onnx")
-x = torch.randn(1, 3, 224, 224, requires_grad=True) # Input to the model. (batch,channel,width,height)
+x = torch.randn(1, 1, 224, 224, requires_grad=True) # Input to the model. (batch,channel,width,height)
 torch.onnx.export(torch_model,               # model being run
                   x,                         # model input (or a tuple for multiple inputs)
                   "epoch_resnet.onnx",   # where to save the model (can be a file or file-like object)
                   export_params=True,        # store the trained parameter weights inside the model file
-                  opset_version=11,          # the ONNX version to export the model to
+                  opset_version=10,          # the ONNX version to export the model to
                   do_constant_folding=True,  # whether to execute constant folding for optimization
                   input_names = ['input'],   # the model's input names
                   output_names = ['output'], # the model's output names
                   verbose=False)             # print out a human-readable representation of the network
+
+# For "epoch_resnet.xml"
+# If use opset_version=11, pytorch-onnx can pass, but later onnx-openvino will fail.
+#   "[ ERROR ]  There is no registered "infer" function for node "Resize_350" with op = "Resize"."
+#   Because mo.py only support Resize with Opset-10 version
+#   https://docs.openvinotoolkit.org/latest/_docs_MO_DG_prepare_model_Supported_Frameworks_Layers.html
+#   https://software.intel.com/en-us/forums/intel-distribution-of-openvino-toolkit/topic/848533
+# If use opset_version=10, pytorch-onnx will fail.
+#   "RuntimeError: ONNX export failed: Couldn't export operator aten::upsample_bilinear2d"
+#   https://github.com/pytorch/pytorch/issues/29980
 
 #####################################################
 # (4) verify onnx model
@@ -167,4 +218,4 @@ onnx.checker.check_model(onnx_model)
 
 print(">>> convert onnx to OpenVINO")
 import os
-os.popen('python "C:\Program Files (x86)\IntelSWTools\openvino\deployment_tools\model_optimizer\mo.py" --input_model epoch_resnet.onnx')
+os.system('python "C:\Program Files (x86)\IntelSWTools\openvino\deployment_tools\model_optimizer\mo.py" --input_model epoch_resnet.onnx')
