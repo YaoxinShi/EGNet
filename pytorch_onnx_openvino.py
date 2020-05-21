@@ -213,9 +213,44 @@ onnx_model = onnx.load("epoch_resnet.onnx")
 onnx.checker.check_model(onnx_model)
 
 #####################################################
-# (5) convert onnx to OpenVINO
+# (5.a) convert onnx to OpenVINO
 #####################################################
 
+'''
 print(">>> convert onnx to OpenVINO")
 import os
 os.system('python "C:\Program Files (x86)\IntelSWTools\openvino\deployment_tools\model_optimizer\mo.py" --input_model epoch_resnet.onnx')
+'''
+
+#####################################################
+# (5.b.1) convert onnx to TF
+#####################################################
+
+# pip install onnx-tf
+print(">>> convert onnx to TF")
+from onnx_tf.backend import prepare
+tf_rep = prepare(onnx_model, strict=False)
+tf_rep.export_graph("epoch_resnet.pb")
+
+# If use opset_version=11, onnx-tf fails.
+#   "NotImplementedError: Gather version 11 is not implemented."
+#   This issue is fixed recently: https://github.com/onnx/onnx-tensorflow/issues/527
+#   If you are on Tensorflow 1.x, you need to do a source build from the "tf-1.x" branch. Please try the following and see if it helps.
+#   //python
+#   //import tensorflow as tf
+#   //tf.__version__
+#   git clone https://github.com/onnx/onnx-tensorflow.git
+#   cd onnx-tensorflow
+#   git checkout tf-1.x
+#   pip install -e .
+# After fixing above, new failure:
+#   "NotImplementedError: Resize version 11 is not implemented."
+#   This issue hasn't been fixed yet: https://github.com/onnx/onnx-tensorflow/issues/591
+
+#####################################################
+# (5.b.2) convert onnx to OpenVINO
+#####################################################
+
+print(">>> convert TF to OpenVINO")
+import os
+os.system('python "C:\Program Files (x86)\IntelSWTools\openvino\deployment_tools\model_optimizer\mo.py" --input_model epoch_resnet.pb')
