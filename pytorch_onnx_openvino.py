@@ -128,11 +128,6 @@ test = Solver(None, test_loader, config, dataset.save_folder())
 # (2) load pretrained weights
 #####################################################
 
-print(">>> load pretrained weights")
-'''
-torch_model = test.net_bone
-torch_model.load_state_dict(torch.load("epoch_resnet.pth", map_location=torch.device('cpu')))
-'''
 #------------------------------------------
 import io
 import numpy as np
@@ -167,10 +162,18 @@ class SuperResolutionNet(nn.Module):
         init.orthogonal_(self.conv2.weight, init.calculate_gain('relu'))
         init.orthogonal_(self.conv3.weight, init.calculate_gain('relu'))
         init.orthogonal_(self.conv4.weight)
-
-torch_model = SuperResolutionNet(upscale_factor=3)
-torch_model.load_state_dict(torch.load("superres_epoch100-44c6958e.pth", map_location=torch.device('cpu')))
 #------------------------------------------
+
+print(">>> load pretrained weights")
+use_sample_model = False
+if use_sample_model:
+    torch_model = SuperResolutionNet(upscale_factor=3)
+    # model_url = 'https://s3.amazonaws.com/pytorch/test_data/export/superres_epoch100-44c6958e.pth'
+    # torch_model.load_state_dict(model_zoo.load_url(model_url, map_location=torch.device('cpu')))
+    torch_model.load_state_dict(torch.load("superres_epoch100-44c6958e.pth", map_location=torch.device('cpu')))
+else:
+    torch_model = test.net_bone
+    torch_model.load_state_dict(torch.load("epoch_resnet.pth", map_location=torch.device('cpu')))
 
 torch_model.eval() # set the model to inference mode
 
@@ -179,18 +182,30 @@ torch_model.eval() # set the model to inference mode
 #####################################################
 
 print(">>> convert pytorch to onnx")
-x = torch.randn(1, 1, 224, 224, requires_grad=True) # Input to the model. (batch,channel,width,height)
-torch.onnx.export(torch_model,               # model being run
-                  x,                         # model input (or a tuple for multiple inputs)
-                  "epoch_resnet.onnx",   # where to save the model (can be a file or file-like object)
-                  export_params=True,        # store the trained parameter weights inside the model file
-                  opset_version=10,          # the ONNX version to export the model to
-                  do_constant_folding=True,  # whether to execute constant folding for optimization
-                  input_names = ['input'],   # the model's input names
-                  output_names = ['output'], # the model's output names
-                  verbose=False)             # print out a human-readable representation of the network
+if use_sample_model:
+    x = torch.randn(1, 1, 224, 224, requires_grad=True) # Input to the model. (batch,channel,width,height)
+    torch.onnx.export(torch_model,               # model being run
+                      x,                         # model input (or a tuple for multiple inputs)
+                      "out.onnx",                # where to save the model (can be a file or file-like object)
+                      export_params=True,        # store the trained parameter weights inside the model file
+                      opset_version=10,          # the ONNX version to export the model to
+                      do_constant_folding=True,  # whether to execute constant folding for optimization
+                      input_names = ['input'],   # the model's input names
+                      output_names = ['output'], # the model's output names
+                      verbose=False)             # print out a human-readable representation of the network
+else:
+    x = torch.randn(1, 3, 224, 224, requires_grad=True) # Input to the model. (batch,channel,width,height)
+    torch.onnx.export(torch_model,               # model being run
+                      x,                         # model input (or a tuple for multiple inputs)
+                      "out.onnx",                # where to save the model (can be a file or file-like object)
+                      export_params=True,        # store the trained parameter weights inside the model file
+                      opset_version=11,          # the ONNX version to export the model to
+                      do_constant_folding=True,  # whether to execute constant folding for optimization
+                      input_names = ['input'],   # the model's input names
+                      output_names = ['output'], # the model's output names
+                      verbose=False)             # print out a human-readable representation of the network
 
-# For "epoch_resnet.xml"
+# For "epoch_resnet.pth"
 # If use opset_version=11, pytorch-onnx can pass, but later onnx-openvino will fail.
 #   "[ ERROR ]  There is no registered "infer" function for node "Resize_350" with op = "Resize"."
 #   Because mo.py only support Resize with Opset-10 version
@@ -199,6 +214,7 @@ torch.onnx.export(torch_model,               # model being run
 # If use opset_version=10, pytorch-onnx will fail.
 #   "RuntimeError: ONNX export failed: Couldn't export operator aten::upsample_bilinear2d"
 #   https://github.com/pytorch/pytorch/issues/29980
+#   If replace "bilinear" to "nearest" in model.py, pytorch-onnx (with opset_version=10) can pass. But later onnx-openvino still fail with "Resize" issue.
 
 #####################################################
 # (4) verify onnx model
@@ -209,28 +225,29 @@ torch.onnx.export(torch_model,               # model being run
 
 print(">>> verify onnx model")
 import onnx
-onnx_model = onnx.load("epoch_resnet.onnx")
+onnx_model = onnx.load("out.onnx")
 onnx.checker.check_model(onnx_model)
 
 #####################################################
 # (5.a) convert onnx to OpenVINO
 #####################################################
 
-'''
-print(">>> convert onnx to OpenVINO")
-import os
-os.system('python "C:\Program Files (x86)\IntelSWTools\openvino\deployment_tools\model_optimizer\mo.py" --input_model epoch_resnet.onnx')
-'''
+onnx_openvino_directly = True
+if onnx_openvino_directly:
+    print(">>> convert onnx to OpenVINO")
+    import os
+    os.system('python "C:\Program Files (x86)\IntelSWTools\openvino\deployment_tools\model_optimizer\mo.py" --input_model out.onnx')
 
 #####################################################
 # (5.b.1) convert onnx to TF
 #####################################################
 
-# pip install onnx-tf
-print(">>> convert onnx to TF")
-from onnx_tf.backend import prepare
-tf_rep = prepare(onnx_model, strict=False)
-tf_rep.export_graph("epoch_resnet.pb")
+else:
+    # pip install onnx-tf
+    print(">>> convert onnx to TF")
+    from onnx_tf.backend import prepare
+    tf_rep = prepare(onnx_model, strict=False)
+    tf_rep.export_graph("out.pb")
 
 # If use opset_version=11, onnx-tf fails.
 #   "NotImplementedError: Gather version 11 is not implemented."
@@ -251,6 +268,6 @@ tf_rep.export_graph("epoch_resnet.pb")
 # (5.b.2) convert onnx to OpenVINO
 #####################################################
 
-print(">>> convert TF to OpenVINO")
-import os
-os.system('python "C:\Program Files (x86)\IntelSWTools\openvino\deployment_tools\model_optimizer\mo.py" --input_model epoch_resnet.pb')
+    print(">>> convert TF to OpenVINO")
+    import os
+    os.system('python "C:\Program Files (x86)\IntelSWTools\openvino\deployment_tools\model_optimizer\mo.py" --input_model out.pb')
